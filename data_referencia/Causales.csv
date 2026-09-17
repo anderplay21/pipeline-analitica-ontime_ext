@@ -1,0 +1,88 @@
+﻿Sigla;Descripcion;Responsabilidad;Tipo De Novedad;On Time Justificado
+RC11;Mercancia Llega A Plataforma Sobre El Tren De Entrega;Remitente;TIEMPO;JUSTIFICADO
+RC21;Facturación Retrasada / Mercancía Salió Tarde;Remitente;TIEMPO;JUSTIFICADO
+RC22;Congestión Por Concentración De La Venta;Remitente;TIEMPO;JUSTIFICADO
+RC31;Llegada Tardia Otras Transportadoras;Remitente;TIEMPO;JUSTIFICADO
+RC41;Demora Con Stand By (Directos / Masivos);Remitente;TIEMPO;JUSTIFICADO
+RC42;Cita O Compromiso Asignado Directamente Por El Cliente.;Remitente;TIEMPO;JUSTIFICADO
+RC43;Pedido Por Fuera De Agenda Ó Día Fijo;Remitente;TIEMPO;JUSTIFICADO
+RC44;Pendiente Por Asignación De Cita Ajeno A Icoltrans;Remitente;TIEMPO;JUSTIFICADO
+RT1-1;Recogida No Exitosa-Mercancia Averiada;Remitente;TIEMPO;JUSTIFICADO
+RT2-1;Mercancia En Condiciones No Aptas De Recogida;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-2;Mercancia Recogida Por El Representante De Ventas;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-3;Cantidad De Cajas  O Unidades No Corresponde;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-4;Mercancia Sin Cinta;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-5;Proveedor No Ha Relacionado Averias;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-6;No Coincide Mercancia Fisica Con Lo Realcionado;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT2-7;Mercancia No Esta Marcada / Sin Sticker;Remitente;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RD11;Destinatario Sella Con Fecha De Entrega Diferente A La Real;Destinatario;TIEMPO;JUSTIFICADO
+RD21;Entrega Con Cita;Destinatario;TIEMPO;JUSTIFICADO
+RD22;Destinatario No Recibe Sabados;Destinatario;TIEMPO;JUSTIFICADO
+RD23;Horario Restringido;Destinatario;TIEMPO;JUSTIFICADO
+RD24;Dia Fijo De Entrega;Destinatario;TIEMPO;JUSTIFICADO
+RD25;Entrega Según Vigencia Orden De Compra;Destinatario;TIEMPO;JUSTIFICADO
+RD26;Entrega Consolidada;Destinatario;TIEMPO;JUSTIFICADO
+RT3-1;No Hay Mercancia Para Recoger;Destinatario;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT3-1;No Hay Mercancia Para Recoger;Destinatario;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT3-4;No Se Encontro Personal Encargado;Destinatario;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT3-5;Mercancia Destruida O Donada;Destinatario;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RT3-6;Mercancia No Se Ubica En El Punto;Destinatario;TIEMPO - Recogida No Exitosa;JUSTIFICADO
+RE11;Perturbación De Orden Público;Factor Externo;TIEMPO;JUSTIFICADO
+RE12;Demora Por Siniestros Naturales;Factor Externo;TIEMPO;JUSTIFICADO
+RE13;Demora Por Restricción Vehicular;Factor Externo;TIEMPO;JUSTIFICADO
+RE14;Demora Por Congestión Vehicular;Factor Externo;TIEMPO;JUSTIFICADO
+RE15;Fiesta Nacional / Regional;Factor Externo;TIEMPO;JUSTIFICADO
+RE21;Vehículo Retenido Por Autoridades De Control;Factor Externo;TIEMPO;JUSTIFICADO
+RE31;Vehículo Hurtado / Accidentado;Factor Externo;TIEMPO;JUSTIFICADO
+EP11;Entrega Perfecta (A Tiempo Y Sin Novedad);On Time;TIEMPO;ON TIME
+EP12;Entrega A Tiempo Con Devolución Parcial;On Time;TIEMPO;ON TIME
+EP13;Ofrecido A Tiempo Genera Segundo Ofrecimiento O Refacturación;On Time;TIEMPO;ON TIME
+EP14;Ofrecida A Tiempo Con Devolución Total;On Time;TIEMPO;ON TIME
+EP19;Recogida Perfecta (A Tiempo Y Sin Novedad);On Time;TIEMPO - Recogida Exitosa;ON TIME
+ICOL-01;Finalizo Recorrido En Bodega Tramo Nacional;Operador Logistico;TIEMPO;PENALIZADO
+ICOL-02;Redespacho;Operador Logistico;TIEMPO;PENALIZADO
+RO12;Demora En La Entrega Por Operador Logístico;Operador Logistico;TIEMPO;PENALIZADO
+RO121;Faltante O Daño De Documentos Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1210;Conducta Inapropiada Tripulacion Durante La Entrega;Operador Logistico;TIEMPO;PENALIZADO
+RO1211;Conductor Modifica Ruta;Operador Logistico;TIEMPO;PENALIZADO
+RO1212;Demora En Descargue Otros Puntos;Operador Logistico;TIEMPO;PENALIZADO
+RO1213;Conductor Se Enturno Pero Se Movio Del Punto;Operador Logistico;TIEMPO;PENALIZADO
+RO1214;Mercancía Averiada O Contaminada Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1215;Faltante O Daño De Documentos Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1216;Falta De Vehículo O Cabezote Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1217;Error En Despacho Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1218;Falta De Vehículo O Cabezote Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1219;Mercancía Averiada O Contaminada Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO122;Error En Despacho Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1220;Mercancía Extraviada O Hurtada Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1221;Falta Personal Descargue;Operador Logistico;TIEMPO;PENALIZADO
+RO1222;Llegada Fuera De La Ventana De Recibo O Entrega De Mercancía ;Operador Logistico;TIEMPO;PENALIZADO
+RO1223;Mala Planeación Ó Ruteo;Operador Logistico;TIEMPO;PENALIZADO
+RO1224;No Hubo Consolidacion De Carga Para La Zona Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1225;No Se Programo Tripulacion Para El Vehiculo Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1226;Pedido No Enrutado Por Operaciones;Operador Logistico;TIEMPO;PENALIZADO
+RO1227;Congestion Operativa En La Plataforma Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1228;Mercancía Extraviada O Hurtada Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1229;Personal Sin Documentos Exigidos;Operador Logistico;TIEMPO;PENALIZADO
+RO123;No Hay Existencia De Inventario;Operador Logistico;TIEMPO;PENALIZADO
+RO1230;Congestion Operativa En La Plataforma Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1231;Retraso En Colocacion De Vehiculo En Cliente Generador;Operador Logistico;TIEMPO;PENALIZADO
+RO1232;Retraso Ubicación De Muelle Para Descargue;Operador Logistico;TIEMPO;PENALIZADO
+RO1233;Vehículo Varado O Accidentado En Ruta Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1234;Vehículo En Mal Estado O No Cumple Con Las Especificaciones Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1235;Vehículo Sin Documentos Exigidos;Operador Logistico;TIEMPO;PENALIZADO
+RO1236;Vehículo En Mal Estado O No Cumple Con Las Especificaciones Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1237;Vehículo Varado O Accidentado En Ruta Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1238;Consolidación De Caravanas O Recargues En Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1239;Conductor Llega Tarde Ó No Se Presenta Para Salir A Ruta Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO124;No Hubo Consolidacion De Carga Para La Zona Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO1240;Conductor Llega Tarde Ó No Se Presenta Para Salir A Ruta Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO1241;Demora En La Creacion Del Servicio Para Su Programación;Operador Logistico;TIEMPO;PENALIZADO
+RO125;Retraso O Errores En Alistamiento;Operador Logistico;TIEMPO;PENALIZADO
+RO126;Retraso En La Entrega Por La Reexpedidora;Operador Logistico;TIEMPO;PENALIZADO
+RO127;No Se Programo Tripulacion Para El Vehiculo Destino;Operador Logistico;TIEMPO;PENALIZADO
+RO128;Compromiso De Entrega Errado O No Informado Origen;Operador Logistico;TIEMPO;PENALIZADO
+RO129;Compromiso De Entrega Errado O No Informado Destino;Operador Logistico;TIEMPO;PENALIZADO
+RT1-2;Recogida No Exitosa-Mercancia Extraviada;Operador Logistico;TIEMPO;PENALIZADO
+RT1-3;Recogida No Exitosa-Mercancia Hurtada;Operador Logistico;TIEMPO;PENALIZADO
+RT1-4;Mercancia Destruida O Trasladada Por Demora En Recoleccion;Operador Logistico;TIEMPO - Recogida No Exitosa;PENALIZADO

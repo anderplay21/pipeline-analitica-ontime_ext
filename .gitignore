@@ -1,0 +1,26 @@
+# Credenciales
+config/.env
+*.env
+
+# Logs
+logs/
+*.log
+
+# Respaldos de archivos crudos
+data_raw_backup/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Datos temporales
+*.xlsx
+!data_raw_backup/.gitkeep
+reporte_consolidacion.csv
+
+# Entornos / IDE
+.vscode/
+.idea/

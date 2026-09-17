@@ -1,0 +1,124 @@
+# Configuración general del pipeline analítica-ontime
+# No pongas credenciales aquí — eso va en .env
+
+sql_server:
+  # Servidor corporativo (instancia por defecto, puerto 1433). SQL Server 2019 Standard,
+  # en modo mixto: acepta tanto autenticación de Windows como logins SQL.
+  servidor: "ICOLDATA01N"
+  base_datos: "AnaliticaOperativa"
+  driver: "ODBC Driver 18 for SQL Server"
+  # false = login SQL, con SQL_USUARIO / SQL_PASSWORD de config/.env.
+  # true  = autenticación de Windows, con la cuenta de dominio que ejecuta el proceso
+  #         (requiere que el DBA le dé permisos: ver sql/06_permisos_pipeline.sql).
+  trusted_connection: false
+  trust_server_certificate: true
+  # Segundos de espera para establecer la conexión. En un servidor remoto conviene un
+  # límite explícito: si la red o el servidor no responden, la corrida falla rápido y
+  # queda registrada en core.ETL_Control en vez de quedarse colgada.
+  timeout_conexion: 30
+
+sharepoint:
+  # Sitio y biblioteca reales (ver extraer_desde_sharepoint_script1.py original)
+  sitio_url: "https://icoltranssas.sharepoint.com/sites/Consolidadodeestatus-SAC"
+  biblioteca: "Documentos compartidos"
+  extensiones_permitidas: [".xlsx", ".xlsb"]
+  # Nombre de hoja a buscar dentro de cada libro (tolera variaciones: mayúsculas, sufijo de mes, etc.)
+  hoja_buscar: "consolidado"
+  # Cache local de libros descargados y del token MSAL (device code), no se versiona
+  carpeta_cache: "data_raw_backup/_cache_sharepoint"
+  ruta_cache_token: "data_raw_backup/_cache_sharepoint/.msal_token_cache.json"
+  # Client id público de Microsoft Office, usado por el flujo device code
+  client_id_publico: "d3590ed6-52b3-4102-aeff-aad2292ab01c"
+
+ventana_movil:
+  meses_atras: 1   # 0 = solo mes actual, 1 = mes actual + mes anterior
+
+# Esquema fijo de columnas que se extraen de cada libro de SharePoint (antes de transformar).
+# Solo estas columnas salen del consolidado; el resto se descarta y se reporta.
+columnas_esquema_origen:
+  - "Cliente"
+  - "Cl/ Movimiento"
+  - "Cl Doc FWO"
+  - "Fecha de Factura"
+  - "Ciudad Origen"
+  - "Centro Origen"
+  - "Destinatario"
+  - "Ciudad Destino"
+  - "Centro Destino"
+  - "Factura"
+  - "Carta Porte"
+  - "Orden de Compra"
+  - "Orden de Pedido"
+  - "Remision"
+  - "Ultima Ubicación"
+  - "Fecha Programada De Entrega"
+  - "Hora_Cita"
+  - "Tipo Producto"
+  - "ESTATUS"
+  - "Novedad / Causal"
+  - "FECHA ENTREGA"
+  - "FECHA DE CITA"
+  - "DOCUWARE"
+  - "RESPONSABLE"
+
+# Datos de referencia usados en la transformación (copiados de data_projects/datasets)
+datos_referencia:
+  carpeta: "data_referencia"
+  leadtime: "LeadTime.csv"
+  causales: "Causales.csv"
+  festivos: "Festivos_Colombia.csv"
+  restricciones: "Restricciones.csv"
+
+# Única tabla del pipeline: consolidado de estatus On Time
+tablas:
+  hechos_ontime:
+    tabla_core: "core.HechosOnTime"
+    tabla_staging: "staging.HechosOnTime_Stage"
+    llave_negocio: ["Cliente", "Fecha de Factura", "Factura"]
+    columna_fecha: "Fecha de Factura"
+    # Columnas sobre las que se calcula el RowHash (todas las de negocio, sin las técnicas)
+    columnas_hash:
+      - "Cliente"
+      - "Cl/ Movimiento"
+      - "Cl Doc FWO"
+      - "Fecha de Factura"
+      - "Ciudad Origen"
+      - "Centro Origen"
+      - "Destinatario"
+      - "Ciudad Destino"
+      - "Centro Destino"
+      - "Factura"
+      - "Carta Porte"
+      - "Orden de Compra"
+      - "Orden de Pedido"
+      - "Remision"
+      - "Ultima Ubicación"
+      - "Fecha Programada De Entrega"
+      - "Hora_Cita"
+      - "Tipo Producto"
+      - "ESTATUS"
+      - "Novedad / Causal"
+      - "FECHA ENTREGA"
+      - "FECHA DE CITA"
+      - "DOCUWARE"
+      - "Lead Time"
+      - "Fecha Estimada Entrega"
+      - "RESPONSABLE"
+      - "Origen_Destino"
+      - "Nombre del mes"
+      - "ON TIME ACIDO"
+      - "ON TIME JUSTIFICADO"
+
+logging:
+  carpeta: "logs"
+  nivel: "INFO"
+  rotacion_dias: 30
+
+notificaciones:
+  email_habilitado: false
+  smtp_servidor: "smtp.office365.com"
+  smtp_puerto: 587
+  destinatarios:
+    - "aguzman@icoltrans.com.co"
+  teams_webhook_habilitado: false
+  teams_webhook_url: ""
