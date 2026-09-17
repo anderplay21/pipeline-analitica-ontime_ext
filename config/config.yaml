@@ -60,6 +60,9 @@ columnas_esquema_origen:
   - "FECHA DE CITA"
   - "DOCUWARE"
   - "RESPONSABLE"
+  - "Dir/ Cliente"
+  - "Cajas"
+  - "Kilos"
 
 # Datos de referencia usados en la transformación (copiados de data_projects/datasets)
 datos_referencia:
@@ -108,6 +111,9 @@ tablas:
       - "Nombre del mes"
       - "ON TIME ACIDO"
       - "ON TIME JUSTIFICADO"
+      - "Dir/ Cliente"
+      - "Cajas"
+      - "Kilos"
 
 logging:
   carpeta: "logs"

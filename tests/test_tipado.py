@@ -7,6 +7,7 @@ operativas, códigos numéricos que llegan como float, espacios duros).
 
 import sys
 from datetime import date, time
+from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
@@ -15,7 +16,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from transformacion.tipado import a_entero, a_fecha, a_hora, a_texto, aplicar_tipado_estricto
+from transformacion.tipado import (
+    a_decimal, a_entero, a_fecha, a_hora, a_texto, aplicar_tipado_estricto,
+)
 from utils import esquema as esq
 
 
@@ -125,6 +128,56 @@ def test_entero_basura_queda_nulo():
 
 def test_entero_fuera_del_rango_de_sql_server():
     assert a_entero(99_999_999_999) is None
+
+
+def test_entero_con_separador_de_miles():
+    """El punto agrupa miles: "12.500" son doce mil quinientos, no doce con medio."""
+    assert a_entero("12.500") == 12500
+    assert a_entero("1.234,00") == 1234
+    assert a_entero("1.234.567") == 1234567
+
+
+# -------------------------------------------------------------------------- decimal
+
+def test_decimal_desde_numero_y_texto():
+    assert a_decimal(12.5, 12, 2) == Decimal("12.50")
+    assert a_decimal("12,5", 12, 2) == Decimal("12.50")
+    assert a_decimal("1.234,56", 12, 2) == Decimal("1234.56")   # formato colombiano
+    assert a_decimal("1,234.56", 12, 2) == Decimal("1234.56")   # formato inglés
+    assert a_decimal(" $ 980,75 ", 12, 2) == Decimal("980.75")
+
+
+def test_decimal_el_punto_agrupa_miles():
+    """Regla confirmada con negocio: "12.500" kilos son doce mil quinientos."""
+    assert a_decimal("12.500", 12, 2) == Decimal("12500.00")
+    assert a_decimal("1.234.567", 12, 2) == Decimal("1234567.00")
+    # Un punto que no agrupa de a tres sigue siendo decimal: viene de formato inglés.
+    assert a_decimal("12.5", 12, 2) == Decimal("12.50")
+    assert a_decimal("12.75", 12, 2) == Decimal("12.75")
+
+
+def test_decimal_se_cuantiza_a_la_escala():
+    """El RowHash usa str(valor): si la representación baila, el MERGE actualiza siempre."""
+    equivalentes = [12.5, "12.5", "12,50", "12,5", Decimal("12.5")]
+    representaciones = {str(a_decimal(v, 12, 2)) for v in equivalentes}
+
+    assert representaciones == {"12.50"}
+
+
+def test_decimal_redondea_al_alza_en_el_medio():
+    assert a_decimal("0.125", 12, 2) == Decimal("0.13")
+    assert a_decimal(2.675, 12, 2) == Decimal("2.68")
+
+
+def test_decimal_basura_queda_nulo():
+    for valor in [None, "", "nan", "sin dato", "POR DEFINIR", float("nan"), float("inf")]:
+        assert a_decimal(valor, 12, 2) is None, valor
+
+
+def test_decimal_que_no_cabe_en_la_precision_queda_nulo():
+    """DECIMAL(12,2) admite 10 dígitos enteros; más que eso lo rechazaría SQL Server."""
+    assert a_decimal("9999999999.99", 12, 2) == Decimal("9999999999.99")
+    assert a_decimal("10000000000", 12, 2) is None
 
 
 # ------------------------------------------------------------------ tipos de numpy

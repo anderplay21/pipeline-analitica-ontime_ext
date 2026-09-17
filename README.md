@@ -35,9 +35,10 @@ src/
                    contrato de esquema
   main_pipeline.py orquestador
 sql/               DDL (esquemas, HechosOnTime core/staging, control), migraciones,
-                   scripts de permisos y el MERGE
-tests/             pruebas de las reglas On Time, del tipado estricto, del RowHash y de la
-                   cadena de conexión
+                   scripts de permisos y el MERGE. sql/02, sql/03 y el MERGE se GENERAN
+                   desde utils/esquema.py: no se editan a mano
+tests/             pruebas de las reglas On Time, del tipado estricto, del RowHash, de la
+                   cadena de conexión y de que el SQL generado siga el esquema
 run_pipeline.bat   punto de entrada de la tarea programada (usa el intérprete de env-pipe)
 env-pipe/          entorno virtual del proyecto (no se versiona)
 logs/              log del pipeline y del .bat (no se versiona)
@@ -249,15 +250,57 @@ estación ya está instalado y corriendo.
 5. Correr el pipeline a mano una vez y revisar `core.ETL_Control`.
 6. Crear la tarea programada apuntando a `run_pipeline.bat` (ver [Operación](#operación)).
 
+## Agregar una columna nueva
+
+El listado de columnas está enumerado en varios lugares y no todos fallan si se olvidan.
+El orden importa: **la base primero**, porque las columnas nuevas son nulables y el código
+viejo sigue funcionando con ellas ya creadas — así la corrida diaria no se rompe si el
+cambio de código queda a medias.
+
+1. **Migrar la base.** Escribir un `sql/NN_*.sql` con `ALTER TABLE ... ADD` sobre
+   `core.HechosOnTime` **y** `staging.HechosOnTime_Stage`, con guarda idempotente
+   (`IF COL_LENGTH(...) IS NULL`). Ver `sql/08_agregar_columnas_dir_cajas_kilos.sql` como
+   modelo. Ejecutarlo con una cuenta que pueda hacer DDL: `automatizacion` no puede.
+   Las columnas nuevas van **`NULL`**: una `NOT NULL` haría que el tipado descarte toda
+   fila que no la traiga.
+   Regenerar `sql/02` y `sql/03` no sirve para esto — usan `IF NOT EXISTS` y no alteran
+   una tabla existente.
+2. **Declararla** en `ESQUEMA_HECHOS_ONTIME` ([src/utils/esquema.py](src/utils/esquema.py)),
+   con su tipo y ancho. La posición en la tupla es el orden físico de las columnas.
+3. **Agregarla en `config/config.yaml`**: en `columnas_esquema_origen` si viene del Excel, y
+   **siempre** en `columnas_hash` — si no, un cambio en ese campo no dispara el UPDATE.
+4. **Regenerar el SQL**: `cd src && python -m utils.esquema`. Esto reescribe `sql/02`,
+   `sql/03` y el MERGE. Ninguno de los tres se edita a mano.
+5. **Verificar**: `pytest tests/ -q` y `cd src && python -m utils.verificar_conexion`, que
+   compara las columnas declaradas contra las que la base realmente tiene.
+
+Si la columna es **derivada** (calculada, no viene del Excel), el cálculo va en
+[transformar.py](src/transformacion/transformar.py) y no se declara en
+`columnas_esquema_origen`.
+
+**Tipos disponibles:** `TEXTO` (con ancho), `FECHA`, `HORA`, `ENTERO` y `DECIMAL` (con
+precisión y escala). Agregar un tipo nuevo exige tocar `esquema.py` (el `tipo_sql`) y
+`tipado.py` (la función de conversión y su rama en el despacho).
+
+**Qué esperar en la primera corrida:** al agregar columnas a `columnas_hash` cambia el
+RowHash de todas las filas, así que el MERGE reportará como actualizada casi toda la
+ventana móvil. Es esperado, y es justamente lo que rellena las columnas nuevas en las filas
+ya existentes. En la segunda corrida el número debe volver a la normalidad; si sigue alto,
+algún valor no tiene representación estable en `str()` y el hash cambia en cada corrida.
+
+El histórico anterior a la ventana móvil queda en `NULL`: la ventana solo reprocesa mes
+actual y anterior.
+
 ## Pruebas
 
 ```bash
 env-pipe\Scripts\python.exe -m pytest tests/ -q
 ```
 
-66 pruebas: reglas de On Time ácido y justificado, tipado estricto contra los valores sucios
-reales de los Excel, cálculo del RowHash, armado de la cadena de conexión y el vaciado de
-staging según los permisos de la cuenta.
+77 pruebas: reglas de On Time ácido y justificado, tipado estricto contra los valores sucios
+reales de los Excel (incluido el `DECIMAL` y su estabilidad para el hash), cálculo del
+RowHash, armado de la cadena de conexión, vaciado de staging según los permisos de la cuenta
+y correspondencia entre el SQL versionado y el esquema.
 
 ## Notas
 

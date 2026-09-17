@@ -14,6 +14,7 @@ import sys
 
 import pyodbc
 
+from utils import esquema as esq
 from utils.db import cargar_config, construir_connection_string
 
 # Objetos que el pipeline necesita para correr (ver sql/01..04).
@@ -66,6 +67,38 @@ def _revisar_servidor(config):
               "sql/07_crear_login_pipeline.sql y apuntar .env a él.")
 
 
+def _revisar_columnas(cursor):
+    """Confirma que las tablas tengan las columnas que el esquema declara.
+
+    Es el desajuste más fácil de producir: agregar una columna en `utils.esquema` y
+    olvidar el ALTER TABLE contra el servidor. Los DDL generados usan IF NOT EXISTS y
+    no alteran una tabla que ya existe, así que regenerarlos no basta. Sin este chequeo
+    el error aparece recién en la carga, como un "Invalid column name" a las 8 a.m.
+    """
+    faltantes = []
+    for esquema_sql, tabla in (("core", "HechosOnTime"), ("staging", "HechosOnTime_Stage")):
+        existentes = {
+            fila[0]
+            for fila in cursor.execute(
+                "SELECT c.name FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id"
+                " JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = ? AND t.name = ?",
+                esquema_sql, tabla,
+            )
+        }
+        faltantes += [
+            f"{esquema_sql}.{tabla}.[{c}]" for c in esq.columnas() if c not in existentes
+        ]
+
+    if faltantes:
+        print(f"[FALTA] Columnas que el esquema declara y la base no tiene: {', '.join(faltantes)}")
+        print("        La carga fallará con 'Invalid column name'. Ejecutar el script de")
+        print("        migración correspondiente en sql/ con una cuenta que pueda hacer DDL.")
+        return False
+
+    print(f"[OK] Las tablas tienen las {len(esq.columnas())} columnas del esquema")
+    return True
+
+
 def _revisar_base(config):
     base = config["sql_server"]["base_datos"]
     with _conectar(config) as cn:
@@ -88,6 +121,9 @@ def _revisar_base(config):
             return False
 
         print(f"[OK] Existen las {len(TABLAS_REQUERIDAS)} tablas del pipeline")
+
+        if not _revisar_columnas(cursor):
+            return False
 
         sin_permiso = [
             f"{objeto}:{permiso}"

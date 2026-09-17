@@ -17,6 +17,7 @@ import numbers
 import re
 import unicodedata
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pandas as pd
 
@@ -34,6 +35,11 @@ BASURA_TEXTO = {
 PATRON_HORA = re.compile(
     r"^(?P<hora>\d{1,2})(?:[:.h](?P<minuto>\d{1,2}))?\s*(?P<meridiano>am|pm|m)?$"
 )
+
+# Número con separador de miles bien formado: grupos de exactamente 3 dígitos
+# ("12.500", "1.234.567"). Sirve para distinguirlo de un decimal escrito con punto.
+# El primer grupo no puede empezar en 0: "0.125" es un decimal, nadie escribe 125 así.
+PATRON_MILES = re.compile(r"^-?[1-9]\d{0,2}([.,]\d{3})+$")
 
 
 class ReporteTipado:
@@ -239,6 +245,51 @@ def a_hora(valor) -> time | None:
     return time(hora, minuto)
 
 
+def _texto_a_float(valor) -> float | None:
+    """Interpreta como número el texto libre que traen las celdas numéricas.
+
+    Los Excel llegan con formato colombiano y con restos de edición manual: separador
+    de miles, coma decimal, símbolo de moneda. Reglas, en orden:
+
+    1. Si aparecen los dos separadores, el decimal es el que va de último
+       ("1.234,56" -> 1234.56 y "1,234.56" -> 1234.56).
+    2. Si la agrupación de miles está bien formada, es separador de miles:
+       "12.500" son doce mil quinientos, no doce con medio, y "1.234.567" es un millón
+       largo. Esto lo confirmó negocio: en estos archivos el punto siempre agrupa miles.
+    3. Si un separador aparece repetido, también es de miles, aunque la agrupación esté
+       mal escrita ("1.23.456").
+    4. Una coma sola es el separador decimal ("12,5" -> 12.5).
+    5. Un punto solo que no agrupa miles se respeta como punto decimal ("12.5" -> 12.5):
+       en formato local eso se habría escrito con coma, así que viene de un archivo en
+       formato inglés.
+    """
+    texto = _normalizar_espacios(str(valor))
+    if not texto or texto.lower() in BASURA_TEXTO:
+        return None
+
+    texto = texto.replace("$", "").replace(" ", "").replace(" ", "")
+    comas, puntos = texto.count(","), texto.count(".")
+    if comas and puntos:
+        if texto.rfind(",") > texto.rfind("."):
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", "")
+    elif PATRON_MILES.match(texto):
+        texto = texto.replace(".", "").replace(",", "")
+    elif puntos > 1:
+        texto = texto.replace(".", "")
+    elif comas > 1:
+        texto = texto.replace(",", "")
+    elif comas == 1:
+        texto = texto.replace(",", ".")
+
+    try:
+        numero = float(texto)
+    except (ValueError, OverflowError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
 def a_entero(valor) -> int | None:
     if _es_vacio(valor):
         return None
@@ -250,16 +301,51 @@ def a_entero(valor) -> int | None:
                 return None
             numero = int(round(float(valor)))
         else:
-            texto = _normalizar_espacios(str(valor)).replace(",", ".")
-            if not texto or texto.lower() in BASURA_TEXTO:
+            numero = _texto_a_float(valor)
+            if numero is None:
                 return None
-            numero = int(round(float(texto)))
+            numero = int(round(numero))
     except (ValueError, OverflowError):
         return None
     # Rango de INT en SQL Server.
     if not -2_147_483_648 <= numero <= 2_147_483_647:
         return None
     return numero
+
+
+def a_decimal(valor, precision: int, escala: int) -> Decimal | None:
+    """Convierte a Decimal cuantizado a la escala declarada.
+
+    Devuelve Decimal y no float por dos razones. Una: el RowHash se calcula sobre
+    `str(valor)`, así que la representación tiene que ser estable entre corridas —
+    cuantizado, 12.5 y 12.50 dan siempre "12.50" y el MERGE no actualiza filas que no
+    cambiaron. Dos: un float no representa exactamente los decimales y SQL Server
+    recibiría un valor con ruido en el último dígito.
+
+    Un valor que no quepa en la precisión declarada queda en NULL, igual que una fecha
+    ilegible: es preferible el hueco contado en el log a un dato truncado en silencio.
+    """
+    if _es_vacio(valor) or isinstance(valor, bool):
+        return None
+
+    if isinstance(valor, Decimal):
+        numero = valor
+    else:
+        crudo = float(valor) if _es_numero(valor) else _texto_a_float(valor)
+        if crudo is None or not math.isfinite(crudo):
+            return None
+        # Vía str: Decimal(0.1) arrastra el error binario del float, Decimal("0.1") no.
+        numero = Decimal(str(crudo))
+
+    try:
+        cuantizado = numero.quantize(Decimal(1).scaleb(-escala), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
+
+    # DECIMAL(precision, escala) admite (precision - escala) dígitos a la izquierda.
+    if abs(cuantizado) >= Decimal(10) ** (precision - escala):
+        return None
+    return cuantizado
 
 
 def aplicar_tipado_estricto(df, logger=None):
@@ -291,6 +377,8 @@ def aplicar_tipado_estricto(df, logger=None):
             valores = [a_hora(v) for v in serie]
         elif columna.tipo == esq.ENTERO:
             valores = [a_entero(v) for v in serie]
+        elif columna.tipo == esq.DECIMAL:
+            valores = [a_decimal(v, columna.precision, columna.escala) for v in serie]
         else:
             raise ValueError(f"Tipo no soportado en el esquema: {columna.tipo}")
 
