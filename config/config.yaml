@@ -115,6 +115,14 @@ tablas:
       - "Cajas"
       - "Kilos"
 
+# Bitácora de corridas en una lista de SharePoint (además de core.ETL_Control).
+# La app de Entra necesita rol write sobre este sitio. Si falla, la corrida sigue.
+reporte_ejecuciones:
+  habilitado: true
+  sitio_url: "https://icoltranssas.sharepoint.com/sites/SitioAutomatizaciones"
+  # Ruta de la lista (no el título): no cambia aunque se renombre la lista.
+  ruta_lista: "/sites/SitioAutomatizaciones/Lists/EjecucionesPipelineOnTime"
+
 logging:
   carpeta: "logs"
   nivel: "INFO"

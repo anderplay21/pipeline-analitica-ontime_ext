@@ -46,6 +46,24 @@ def calcular_ventana_fechas(meses_atras=1, hoy=None):
     return fecha_desde, fecha_hasta
 
 
+def usa_certificado():
+    """(thumbprint, ruta del .pem) si el .env configura certificado; (None, None) si no.
+
+    Exige las dos variables juntas: con una sola, la autenticación fallaría con un error
+    de Entra poco claro, así que se avisa aquí qué falta.
+    """
+    import os
+
+    thumbprint = (os.getenv("SP_CERT_THUMBPRINT") or "").strip()
+    ruta = (os.getenv("SP_CERT_PATH") or "").strip().strip('"')
+    if not thumbprint and not ruta:
+        return None, None
+    if not (thumbprint and ruta):
+        raise RuntimeError("Para entrar con certificado se necesitan SP_CERT_THUMBPRINT y "
+                           "SP_CERT_PATH en config/.env (falta una de las dos)")
+    return thumbprint, ruta
+
+
 def _token_device_flow(tenant, client_id, recurso, ruta_cache_token):
     """Obtiene un token por device code, reutilizando el token cacheado si sigue vigente.
 
@@ -93,9 +111,11 @@ def _token_device_flow(tenant, client_id, recurso, ruta_cache_token):
 
 def conectar(site_url, usuario, password, config):
     """Autentica contra SharePoint, en orden de preferencia:
-    1. app registration (si SP_CLIENT_SECRET está en .env) — ideal para desatendido.
-    2. usuario/clave ROPC — falla si la cuenta exige MFA.
-    3. device code — fallback ante MFA; token cacheado en disco.
+    1. certificado de la app (SP_CERT_THUMBPRINT + SP_CERT_PATH en .env) — desatendido,
+       sin usuario ni MFA. SharePoint solo acepta app-only por certificado vía Entra.
+    2. app registration con secreto (si SP_CLIENT_SECRET está en .env).
+    3. usuario/clave ROPC — falla si la cuenta exige MFA.
+    4. device code — fallback ante MFA; token cacheado en disco.
     """
     import os
 
@@ -105,13 +125,28 @@ def conectar(site_url, usuario, password, config):
     sp_cfg = config["sharepoint"]
     ruta_cache_token = RAIZ_PROYECTO / sp_cfg["ruta_cache_token"]
 
-    tenant = os.getenv("SP_TENANT") or f"{usuario.split('@')[-1].split('.')[0]}.onmicrosoft.com"
+    tenant = os.getenv("SP_TENANT")
+    if not tenant:
+        if not usuario:
+            raise RuntimeError("Falta SP_TENANT (o SP_USERNAME para deducirlo) en config/.env")
+        tenant = f"{usuario.split('@')[-1].split('.')[0]}.onmicrosoft.com"
     client_id = os.getenv("SP_CLIENT_ID") or sp_cfg["client_id_publico"]
     client_secret = os.getenv("SP_CLIENT_SECRET")
+    cert_thumbprint, cert_path = usa_certificado()
     recurso = "/".join(site_url.split("/")[:3])
 
     intentos = []
-    if client_secret:
+    if cert_thumbprint:
+        if not os.getenv("SP_CLIENT_ID"):
+            raise RuntimeError("El certificado requiere SP_CLIENT_ID (la app de Entra) en config/.env")
+        if not Path(cert_path).is_file():
+            raise RuntimeError(f"No existe la clave privada del certificado: {cert_path}")
+
+        def _certificado():
+            return ClientContext(site_url).with_client_certificate(
+                tenant, client_id, cert_thumbprint, cert_path=cert_path)
+        intentos.append((f"certificado (client_id={client_id[:8]}...)", _certificado))
+    elif client_secret:
         def _app_registration():
             from office365.runtime.auth.client_credential import ClientCredential
             return ClientContext(site_url).with_credentials(
@@ -308,8 +343,12 @@ def consolidar_sharepoint(config):
     site_url = os.getenv("SP_SITE_URL")
     usuario = os.getenv("SP_USERNAME")
     password = os.getenv("SP_PASSWORD")
-    if not all([site_url, usuario, password]):
-        raise RuntimeError("Faltan SP_SITE_URL / SP_USERNAME / SP_PASSWORD en config/.env")
+    if not site_url:
+        raise RuntimeError("Falta SP_SITE_URL en config/.env")
+    # Con certificado o secreto de la app no hay usuario de por medio.
+    if not (usa_certificado()[0] or os.getenv("SP_CLIENT_SECRET")) and not (usuario and password):
+        raise RuntimeError("Faltan SP_USERNAME / SP_PASSWORD en config/.env "
+                           "(o SP_CERT_THUMBPRINT + SP_CERT_PATH para entrar como app)")
 
     ctx = conectar(site_url, usuario, password, config)
     site_path = "/".join(ctx.base_url.split("/")[3:])
@@ -363,14 +402,21 @@ def filtrar_ventana(df, columna_fecha, fecha_desde, fecha_hasta):
     return df[mascara]
 
 
-def extraer(config, nombre_tabla="hechos_ontime", logger=None):
-    """Orquesta la extracción completa: consolida SharePoint y filtra por la ventana móvil."""
+def extraer(config, nombre_tabla="hechos_ontime", logger=None, estadisticas=None):
+    """Orquesta la extracción completa: consolida SharePoint y filtra por la ventana móvil.
+
+    Si se pasa `estadisticas` (dict), se le agregan `libros_encontrados` y `libros_leidos`
+    para el registro de la corrida.
+    """
     ventana_cfg = config.get("ventana_movil", {})
     fecha_desde, fecha_hasta = calcular_ventana_fechas(
         meses_atras=ventana_cfg.get("meses_atras", 1)
     )
 
     df_consolidado, reportes = consolidar_sharepoint(config)
+    if estadisticas is not None:
+        estadisticas["libros_encontrados"] = len(reportes)
+        estadisticas["libros_leidos"] = sum(1 for r in reportes if r["estado"] == "OK")
 
     # Un libro que no se pudo leer (corrupto, protegido, sin hoja "Consolidado") significa
     # que ese cliente o regional simplemente no entra en la carga. Si solo queda en el
