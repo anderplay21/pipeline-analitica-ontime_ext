@@ -1,14 +1,18 @@
 # pipeline-analitica-ontime
 
-Consolida a diario los archivos de estatus On Time que las regionales mantienen en SharePoint
-y los deja en una sola tabla de SQL Server lista para el dashboard.
+Consolida cada 30 minutos los archivos de estatus On Time que las regionales mantienen en
+SharePoint y los deja en una sola tabla de SQL Server lista para el dashboard.
 
 La extracción y la transformación corren en el **equipo local**; la carga va al servidor
-corporativo **ICOLDATA01N** (SQL Server 2019 Standard), base **AnaliticaOperativa**:
+corporativo **ICOLDATA01N** (SQL Server 2019 Standard), base **AnaliticaOperativa**. Cada
+corrida queda registrada en una lista de SharePoint:
 
 ```
-SharePoint (54 libros .xlsb/.xlsx)  →  transformación local  →  staging  →  MERGE  →  core
-     biblioteca "Documentos compartidos"                  ICOLDATA01N.AnaliticaOperativa
+SharePoint (76 libros .xlsb/.xlsx)  →  transformación local  →  staging  →  MERGE  →  core
+  sitio Consolidadodeestatus-SAC                         ICOLDATA01N.AnaliticaOperativa
+  biblioteca "Documentos compartidos"
+                                          bitácora  →  lista "Ejecuciones Pipeline OnTime"
+                                                       sitio SitioAutomatizaciones
 ```
 
 Una sola tabla de negocio: **`core.HechosOnTime`**, con llave de negocio
@@ -32,7 +36,7 @@ src/
                    ácido/justificado, tipado estricto y cálculo de RowHash
   carga/           carga a staging + ejecución del MERGE
   utils/           conexión a BD, verificación de conexión, logging, notificaciones,
-                   contrato de esquema
+                   registro de corridas en SharePoint, contrato de esquema
   main_pipeline.py orquestador
 sql/               DDL (esquemas, HechosOnTime core/staging, control), migraciones,
                    scripts de permisos y el MERGE. sql/02, sql/03 y el MERGE se GENERAN
@@ -40,6 +44,7 @@ sql/               DDL (esquemas, HechosOnTime core/staging, control), migracion
 tests/             pruebas de las reglas On Time, del tipado estricto, del RowHash, de la
                    cadena de conexión y de que el SQL generado siga el esquema
 run_pipeline.bat   punto de entrada de la tarea programada (usa el intérprete de env-pipe)
+crear_tarea_programada.ps1  crea/reemplaza la tarea de Windows (como administrador)
 env-pipe/          entorno virtual del proyecto (no se versiona)
 logs/              log del pipeline y del .bat (no se versiona)
 data_raw_backup/   cache de libros descargados y del token de SharePoint (no se versiona)
@@ -112,19 +117,66 @@ arreglan distinto:
 | `[AVISO] ... es sysadmin` | El pipeline corre con `sa` o similar: más permiso del necesario | Opcional: pasar al login dedicado con `sql/07` |
 | `[NOTA] Sin permiso ALTER en staging` | Informativo: la tabla se vaciará con `DELETE` en vez de `TRUNCATE` | Nada; opcionalmente otorgar `ALTER` sobre el esquema |
 
+## Conexión a SharePoint
+
+El pipeline entra a SharePoint como una **app de Entra ID con certificado**: sin usuario,
+sin clave y sin MFA, que es lo que permite correrlo desatendido.
+
+| Variable en `config/.env` | Valor |
+|---|---|
+| `SP_TENANT` | Id del tenant de Icoltrans |
+| `SP_CLIENT_ID` | `4ef3bf31-85cd-45f0-919d-1b56f7c5bef7` (la app) |
+| `SP_CERT_THUMBPRINT` | Huella SHA-1 del certificado subido a la app |
+| `SP_CERT_PATH` | Ruta a la clave privada `sp_app_key.pem` |
+| `SP_SITE_URL` | Sitio de donde se leen los libros |
+
+**La clave privada no está en el repo.** Vive en
+`..\certificados_sharepoint\sp_app_key.pem` (fuera de esta carpeta), con permisos NTFS solo
+para la cuenta que corre la tarea. El `.cer` público es el que está cargado en la app de
+Entra. **El certificado vence el 2028-11-24**: antes de esa fecha hay que generar uno nuevo,
+subir su `.cer` a la app y actualizar `SP_CERT_THUMBPRINT` y `SP_CERT_PATH`.
+
+La app tiene el permiso **`Sites.Selected`**, que no abre ningún sitio por sí solo: un
+administrador la autoriza sitio por sitio. Hoy:
+
+| Sitio | Rol | Para qué |
+|---|---|---|
+| `Consolidadodeestatus-SAC` | `read` | Leer los libros de estatus |
+| `SitioAutomatizaciones` | `write` | Escribir la bitácora de corridas |
+
+Para dar acceso a otro sitio, un administrador ejecuta (Graph, permiso `Sites.FullControl.All`):
+
+```powershell
+$sitio = Get-MgSite -SiteId "icoltranssas.sharepoint.com:/sites/<sitio>"
+New-MgSitePermission -SiteId $sitio.Id -BodyParameter @{ roles = @("read")   # o "write"
+  grantedToIdentities = @(@{ application = @{ id = "4ef3bf31-85cd-45f0-919d-1b56f7c5bef7"; displayName = "pipeline-ontime" } }) }
+```
+
+Si las variables de certificado no están, el código cae a los métodos anteriores, en este
+orden: secreto de la app (`SP_CLIENT_SECRET`), usuario/clave (`SP_USERNAME`/`SP_PASSWORD`) y
+device code. Quedan como respaldo; con el certificado configurado no se usan.
+
 ## Operación
 
-La ejecución diaria la dispara la tarea de Windows **`pipeline_ontime`**, que corre como
-`Aguzman` y ejecuta el `run_pipeline.bat` de esta carpeta. Tiene dos disparadores: **diario a
-las 8:00 a.m.** y **al iniciar sesión**, para cubrir los días en que el equipo estaba apagado
-a esa hora.
+La ejecución la dispara la tarea de Windows **`pipeline_ontime`** (carpeta
+`\Automatizaciones\1) Pipeline OnTime\` del Programador de tareas), que ejecuta el
+`run_pipeline.bat` de esta carpeta **cada 30 minutos desde el 2026-11-25 a las 10:00**, como
+`icoltrans\automatizacion`. Corre con o sin sesión iniciada (inicio de sesión S4U, que no
+guarda la clave de Windows ni la necesita: SQL entra con login SQL y SharePoint con el
+certificado).
 
-Modificar la tarea exige un **PowerShell como administrador**: su definición en
-`C:\Windows\System32\Tasks` solo la puede escribir `BUILTIN\Administradores`. Por ejemplo,
-para repuntarla a otra carpeta:
+- Si una corrida sigue en curso cuando toca la siguiente, la nueva **se salta**
+  (`MultipleInstances IgnoreNew`): nunca hay dos corridas a la vez.
+- Si el servidor estaba apagado a la hora, corre apenas pueda (`StartWhenAvailable`).
+- Una corrida que pase de **2 horas** se cancela.
 
-```bash
-$r="C:\Users\aguzman\pipeline-analitica-ontime_ext"; Set-ScheduledTask -TaskName pipeline_ontime -Action (New-ScheduledTaskAction -Execute "$r\run_pipeline.bat" -WorkingDirectory $r)
+La tarea se crea o se reemplaza con `crear_tarea_programada.ps1`, que exige **PowerShell
+como administrador** (registrar una tarea S4U es exclusivo de administradores):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\crear_tarea_programada.ps1
+# otro horario:
+powershell -ExecutionPolicy Bypass -File .\crear_tarea_programada.ps1 -Inicio "2026-12-01 06:00" -Minutos 60
 ```
 
 Correrlo a mano, sin esperar la tarea:
@@ -133,7 +185,38 @@ Correrlo a mano, sin esperar la tarea:
 env-pipe\Scripts\python.exe src\main_pipeline.py
 ```
 
-Una corrida completa tarda unos **9 minutos**, casi todo descargando los libros de SharePoint.
+La primera corrida en un equipo tarda unos **23 minutos**, casi todo descargando los ~460 MB
+de libros de SharePoint. Las siguientes reusan la cache local
+(`data_raw_backup/_cache_sharepoint`) y solo bajan los libros que cambiaron.
+
+### Bitácora de corridas en SharePoint
+
+Cada corrida, exitosa o fallida, agrega un elemento a la lista **Ejecuciones Pipeline
+OnTime** de `SitioAutomatizaciones`. Es la forma de ver el estado del pipeline sin entrar a
+SQL Server; con una corrida cada 30 minutos son unos 48 elementos por día.
+
+| Columna | Contenido |
+|---|---|
+| `Estado` | `Exitosa` o `Fallida` |
+| `Inicio`, `Fin`, `Duracion` | Horario de la corrida y duración en minutos |
+| `VentanaDesde`, `VentanaHasta` | Rango de fechas de factura procesado |
+| `LibrosLeidos` | Libros de SharePoint leídos sin error |
+| `FilasExtraidas` | Filas en la ventana antes de transformar |
+| `FilasDescartadas` | Extraídas que no llegaron a staging: sin llave de negocio completa o duplicadas por llave |
+| `FilasInsertadas`, `FilasActualizadas` | Resultado del MERGE |
+| `Error` | Traceback, solo en corridas fallidas |
+
+En una corrida fallida las cifras quedan hasta donde llegó. Si el fallo es al conectar a SQL
+Server, la lista es el **único** rastro: `core.ETL_Control` no se pudo escribir.
+
+Registrar es de mejor esfuerzo: si SharePoint no responde, la corrida deja un `WARNING` en
+el log y sigue. Se configura en el bloque `reporte_ejecuciones` de `config.yaml`
+(`habilitado: false` lo apaga). La lista se ubica por su ruta (`ruta_lista`), no por su
+título, así que se puede renombrar sin tocar nada.
+
+Las fechas se guardan en UTC y SharePoint las muestra en la zona del sitio, que debe ser
+**(UTC-05:00) Bogotá** (Configuración del sitio → Configuración regional). Con la zona por
+defecto del Pacífico se ven corridas 3 horas.
 
 ### Dónde mirar cuando algo falla
 
@@ -142,6 +225,8 @@ Una corrida completa tarda unos **9 minutos**, casi todo descargando los libros 
 | `logs/pipeline.log` | Log del pipeline, rotado a medianoche y conservado 30 días (`logging.rotacion_dias`) |
 | `logs/bat_run.log` | Salida cruda del `.bat`: es la única pista cuando el proceso ni arranca (ej. venv roto) y no llega a escribir en el log del pipeline |
 | `core.ETL_Control` | Una fila por corrida: ventana procesada, filas de staging, insertadas, actualizadas, estado y el detalle de los ajustes de tipado |
+| Lista **Ejecuciones Pipeline OnTime** | Lo mismo, visible en SharePoint, y además las corridas que fallaron antes de conectar a SQL |
+| Historial de la tarea `pipeline_ontime` | En el Programador de tareas: si la tarea se disparó y con qué código salió |
 
 La consulta de rutina después de una corrida:
 
@@ -154,15 +239,22 @@ ORDER BY ProcesoID DESC;
 
 Las alertas por correo y Teams están **desactivadas** (`notificaciones.email_habilitado` y
 `teams_webhook_habilitado` en `false`), así que un fallo no avisa solo: hoy se detecta
-mirando `ETL_Control` o el log.
+mirando la lista de SharePoint, `ETL_Control` o el log.
+
+`logs/bat_run.log` **no rota**: crece con cada corrida (48 por día). Conviene vaciarlo o
+archivarlo de vez en cuando.
 
 ### Fallas conocidas
 
 | Síntoma | Causa | Solución |
 |---|---|---|
 | `logs/bat_run.log` dice `did not find executable at ...python.exe` y el `.bat` sale con código 103 | El venv `env-pipe` apunta a una ruta de Python que ya no existe (pasa al reinstalar o mover Python) | Corregir `home` y `executable` en `env-pipe/pyvenv.cfg`; no hace falta recrear el entorno |
-| Uno o varios libros fallan con `401 Unauthorized` a mitad de corrida | El token de SharePoint se venció durante la ejecución | Volver a correr; si se repite, borrar `data_raw_backup/_cache_sharepoint/.msal_token_cache.json` y aprobar el device code de nuevo |
-| `AADSTS50076 ... must use multi-factor authentication` en la salida | Es el intento con usuario/clave fallando antes de pasar al device code | Ruido esperado, no un fallo: la autenticación tiene cadena de respaldo (app registration → usuario/clave → device code) |
+| `No existe la clave privada del certificado` | `SP_CERT_PATH` apunta a un `.pem` que no está, o la cuenta que corre no puede leerlo | Revisar la ruta y los permisos NTFS de `certificados_sharepoint` para la cuenta de la tarea |
+| `AADSTS700027` / `AADSTS700024` al conectar a SharePoint | El certificado venció, o el `.cer` cargado en la app no corresponde al `.pem` local | Comparar `SP_CERT_THUMBPRINT` con la huella que muestra la app en Entra; renovar si venció |
+| `403 Forbidden` / `Access denied` al leer el sitio o escribir en la lista | La app no tiene permiso `Sites.Selected` sobre ese sitio, o tiene `read` donde necesita `write` | Pedir al administrador el permiso (ver [Conexión a SharePoint](#conexión-a-sharepoint)) |
+| `No se pudo registrar la corrida en SharePoint` en el log | Falló la bitácora, no la carga: los datos sí quedaron en SQL | Ver el detalle del WARNING; normalmente es permiso o la lista renombrada de ruta |
+| La tarea queda en "No se ha ejecutado" o falla con `0x80070569` | La cuenta no tiene el derecho "Iniciar sesión como proceso por lotes", necesario para S4U | Un administrador lo otorga en `secpol.msc` → Asignación de derechos de usuario |
+| `AADSTS50076 ... must use multi-factor authentication` en la salida | Solo aparece si se quitó el certificado: es el respaldo usuario/clave fallando antes de pasar al device code | Restablecer las variables `SP_CERT_*` en `.env` |
 | `Login failed for user '...'` (18456) | La clave del `.env` no es la de este servidor | Corregir `SQL_PASSWORD` y verificar con `python -m utils.verificar_conexion` |
 | `Cannot find the object "HechosOnTime_Stage" because it does not exist or you do not have permissions` (1088) | Casi siempre es permiso, no tabla faltante: la cuenta no tiene `ALTER` y la carga intentó `TRUNCATE`. Ya no debería ocurrir — el código cae a `DELETE` solo | Correr `verificar_conexion`, que distingue "no existe" de "sin permiso" |
 
@@ -223,13 +315,11 @@ estación ya está instalado y corriendo.
    ```bash
    python -m venv env-pipe && env-pipe\Scripts\python.exe -m pip install -r requirements.txt
    ```
-2. Copiar `config/.env` (no se versiona). Debe traer las credenciales de SharePoint
-   (`SP_SITE_URL`, `SP_USERNAME`, `SP_PASSWORD`, `SP_TENANT`) y las del login SQL
-   (`SQL_USUARIO`, `SQL_PASSWORD`). Como el tenant exige MFA, la primera corrida pide
-   aprobar un device code en el navegador; el token queda cacheado en
-   `data_raw_backup/_cache_sharepoint/.msal_token_cache.json` para las siguientes. Con una
-   app registration en Azure AD (`SP_CLIENT_ID` / `SP_CLIENT_SECRET`) se vuelve 100%
-   desatendido, sin device code.
+2. Copiar `config/.env` (no se versiona) con el login SQL (`SQL_USUARIO`, `SQL_PASSWORD`) y
+   las variables de SharePoint (`SP_SITE_URL`, `SP_TENANT`, `SP_CLIENT_ID`,
+   `SP_CERT_THUMBPRINT`, `SP_CERT_PATH`), y copiar `sp_app_key.pem` a una carpeta fuera del
+   repo con permisos solo para la cuenta de la tarea. Ver
+   [Conexión a SharePoint](#conexión-a-sharepoint).
 3. Crear los objetos en la base, si no existen (requiere permisos elevados sobre
    `AnaliticaOperativa`):
    ```
@@ -247,8 +337,9 @@ estación ya está instalado y corriendo.
    ```bash
    cd src && python -m utils.verificar_conexion
    ```
-5. Correr el pipeline a mano una vez y revisar `core.ETL_Control`.
-6. Crear la tarea programada apuntando a `run_pipeline.bat` (ver [Operación](#operación)).
+5. Crear la carpeta `logs` (el `.bat` escribe ahí antes de que Python la cree).
+6. Correr el pipeline a mano una vez y revisar `core.ETL_Control` y la lista de SharePoint.
+7. Crear la tarea con `crear_tarea_programada.ps1` como administrador (ver [Operación](#operación)).
 
 ## Agregar una columna nueva
 
@@ -297,10 +388,11 @@ actual y anterior.
 env-pipe\Scripts\python.exe -m pytest tests/ -q
 ```
 
-77 pruebas: reglas de On Time ácido y justificado, tipado estricto contra los valores sucios
+84 pruebas: reglas de On Time ácido y justificado, tipado estricto contra los valores sucios
 reales de los Excel (incluido el `DECIMAL` y su estabilidad para el hash), cálculo del
-RowHash, armado de la cadena de conexión, vaciado de staging según los permisos de la cuenta
-y correspondencia entre el SQL versionado y el esquema.
+RowHash, armado de la cadena de conexión, vaciado de staging según los permisos de la cuenta,
+correspondencia entre el SQL versionado y el esquema, y el armado del registro para la
+lista de SharePoint (conversión de fechas a UTC y tolerancia a fallas de SharePoint).
 
 ## Notas
 

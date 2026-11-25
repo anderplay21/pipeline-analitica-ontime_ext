@@ -24,3 +24,6 @@ reporte_consolidacion.csv
 # Entornos / IDE
 .vscode/
 .idea/
+
+# Entorno virtual del servidor
+env-pipe/
